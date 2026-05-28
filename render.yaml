@@ -1,0 +1,42 @@
+# Optional: deploy from Render Dashboard → New → Blueprint
+# Or create a Web Service manually (see backend/DEPLOY.md)
+services:
+  - type: web
+    name: photo-map-api
+    runtime: docker
+    rootDir: backend
+    plan: free
+    healthCheckPath: /v1/healthz
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: CORS_ALLOW_ALL
+        value: "false"
+      - key: CORS_ORIGINS
+        value: https://frontend-one-inky-29.vercel.app,http://localhost:3000
+      - key: REDIS_ENABLED
+        value: "false"
+      - key: STORAGE_BUCKET
+        value: Photos
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: DATABASE_HOST
+        sync: false
+      - key: DATABASE_PORT
+        value: "6543"
+      - key: DATABASE_NAME
+        value: postgres
+      - key: DATABASE_USER
+        sync: false
+      - key: DATABASE_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
