@@ -23,7 +23,7 @@ async def lifespan(_app: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
-        title="Photo Map API",
+        title="HyLight Demo API",
         version="0.1.0",
         lifespan=lifespan,
     )

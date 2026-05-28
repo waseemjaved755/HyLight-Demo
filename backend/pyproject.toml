@@ -1,7 +1,7 @@
 [project]
-name = "photomap-api"
+name = "hylight-demo-api"
 version = "0.1.0"
-description = "Geotagged photo map API"
+description = "HyLight Demo API"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.0",

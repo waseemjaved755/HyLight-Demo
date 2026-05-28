@@ -38,7 +38,7 @@ async def generate_photo_description(
                     {
                         "text": (
                             "Describe this photograph in exactly two sentences "
-                            "for a travel photo map. Be specific about what is visible."
+                            "for the HyLight Demo travel map. Be specific about what is visible."
                         )
                     },
                     {"inline_data": {"mime_type": mime_type, "data": b64}},
