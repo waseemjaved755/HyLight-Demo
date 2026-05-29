@@ -3,9 +3,11 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Response, status
 
 from app.api.deps import CurrentUser, DbSession
+from app.api.v1.http_errors import from_value_error
 from app.schemas.photo import (
     MapPhotosResponse,
     PhotoDescribeRequest,
+    PhotoListResponse,
     PhotoResponse,
     PhotoUploadInitRequest,
     PhotoUploadInitResponse,
@@ -24,6 +26,15 @@ async def init_upload(
 ) -> PhotoUploadInitResponse:
     service = PhotoService(session)
     return await service.init_upload(owner=user, payload=payload)
+
+
+@router.get("/mine", response_model=PhotoListResponse)
+async def list_my_photos(
+    user: CurrentUser,
+    session: DbSession,
+) -> PhotoListResponse:
+    service = PhotoService(session)
+    return await service.list_for_owner(user.id)
 
 
 @router.get("/map/viewport", response_model=MapPhotosResponse)
@@ -58,7 +69,20 @@ async def finalize_upload(
         background_tasks.add_task(run_photo_description_background, photo_id, user.id)
         return response
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise from_value_error(exc) from exc
+
+
+@router.delete("/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_photo(
+    photo_id: UUID,
+    user: CurrentUser,
+    session: DbSession,
+) -> None:
+    service = PhotoService(session)
+    try:
+        await service.delete_photo(photo_id, user.id)
+    except ValueError as exc:
+        raise from_value_error(exc) from exc
 
 
 @router.get("/{photo_id}", response_model=PhotoResponse)
@@ -93,4 +117,4 @@ async def describe_photo(
             retry=payload.retry,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise from_value_error(exc) from exc

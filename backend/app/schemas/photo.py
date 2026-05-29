@@ -67,6 +67,21 @@ class MapPhotosResponse(AppModel):
     count: int
 
 
+class PhotoListItem(AppModel):
+    id: UUID
+    lat: float
+    lng: float
+    thumb_key: str | None
+    ai_description: str | None
+    ai_status: AiStatus
+    created_at: datetime
+
+
+class PhotoListResponse(AppModel):
+    photos: list[PhotoListItem]
+    count: int
+
+
 class PhotoDescribeRequest(AppModel):
     """Optional signed URL from the client — avoids needing a Supabase secret key."""
 

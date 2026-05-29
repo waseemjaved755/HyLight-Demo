@@ -14,6 +14,16 @@ class PhotoRepository(BaseRepository[Photo]):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session, Photo)
 
+    async def list_by_owner(self, owner_id: UUID, *, limit: int = 200) -> list[Photo]:
+        stmt = (
+            select(Photo)
+            .where(Photo.owner_id == owner_id, Photo.deleted_at.is_(None))
+            .order_by(Photo.created_at.desc())
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
     async def get_active(self, photo_id: UUID) -> Photo | None:
         stmt = select(Photo).where(Photo.id == photo_id, Photo.deleted_at.is_(None))
         result = await self._session.execute(stmt)

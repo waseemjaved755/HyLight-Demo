@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,3 +85,24 @@ class CommentService:
 
         logger.info("comments_db_only_redis_off", extra={"photo_id": str(photo_id)})
         return result, "disabled"
+
+    async def delete(
+        self,
+        *,
+        photo_id: UUID,
+        comment_id: UUID,
+        user: User,
+    ) -> None:
+        photo = await self._photos.get_active(photo_id)
+        if photo is None:
+            raise ValueError("Photo not found")
+
+        comment = await self._comments.get_active(comment_id)
+        if comment is None or comment.photo_id != photo_id:
+            raise ValueError("Comment not found")
+
+        if comment.author_id != user.id and photo.owner_id != user.id:
+            raise ValueError("Not allowed to delete this comment")
+
+        comment.deleted_at = datetime.now(timezone.utc)
+        await invalidate_comments_cache(str(photo_id))

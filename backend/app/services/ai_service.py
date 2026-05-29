@@ -5,6 +5,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.services.image_utils import prepare_image_for_gemini
+from app.services.storage_service import download_storage_object
 
 logger = logging.getLogger(__name__)
 
@@ -100,24 +101,4 @@ async def download_from_signed_url(image_url: str) -> tuple[bytes, str] | None:
 
 
 async def download_from_supabase_storage(storage_path: str) -> tuple[bytes, str] | None:
-    settings = get_settings()
-    if not settings.supabase_url or not settings.supabase_service_role_key:
-        return None
-
-    bucket = settings.storage_bucket
-    object_url = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{storage_path}"
-
-    headers = {
-        "Authorization": f"Bearer {settings.supabase_service_role_key}",
-        "apikey": settings.supabase_service_role_key,
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(object_url, headers=headers)
-            response.raise_for_status()
-            mime = response.headers.get("content-type", "image/jpeg")
-            return response.content, mime
-    except Exception:
-        logger.exception("storage_download_failed", extra={"path": storage_path})
-        return None
+    return await download_storage_object(storage_path)

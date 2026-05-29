@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,13 +11,16 @@ from app.core.config import get_settings
 from app.core.redis_client import (
     cache_get,
     cache_setex,
+    invalidate_comments_cache,
     invalidate_map_cache,
     invalidate_photo_cache,
     is_redis_available,
 )
 from app.models.photo import Photo
 from app.models.user import User
+from app.repositories.comment_repository import CommentRepository
 from app.repositories.photo_repository import PhotoRepository
+from app.services.storage_service import delete_storage_object
 from app.services.ai_service import (
     download_from_signed_url,
     download_from_supabase_storage,
@@ -25,6 +29,8 @@ from app.services.ai_service import (
 from app.schemas.photo import (
     MapPhotoFeature,
     MapPhotosResponse,
+    PhotoListItem,
+    PhotoListResponse,
     PhotoResponse,
     PhotoUploadInitRequest,
     PhotoUploadInitResponse,
@@ -37,6 +43,7 @@ PHOTO_CACHE_TTL_SECONDS = 600
 class PhotoService:
     def __init__(self, session: AsyncSession) -> None:
         self._photos = PhotoRepository(session)
+        self._comments = CommentRepository(session)
 
     @staticmethod
     def _photo_cache_key(photo_id: UUID) -> str:
@@ -82,10 +89,14 @@ class PhotoService:
         photo.storage_key_original = storage_path
         return PhotoUploadInitResponse(photo_id=photo.id, storage_path=storage_path)
 
-    async def finalize(self, photo_id: UUID, owner_id: UUID) -> PhotoResponse:
+    async def _require_owned_photo(self, photo_id: UUID, owner_id: UUID) -> Photo:
         photo = await self._photos.get_active(photo_id)
         if photo is None or photo.owner_id != owner_id:
             raise ValueError("Photo not found")
+        return photo
+
+    async def finalize(self, photo_id: UUID, owner_id: UUID) -> PhotoResponse:
+        photo = await self._require_owned_photo(photo_id, owner_id)
         await invalidate_map_cache()
         await invalidate_photo_cache(str(photo_id))
         response = await self._to_response(photo)
@@ -121,9 +132,7 @@ class PhotoService:
         image_url: str | None = None,
         retry: bool = False,
     ) -> PhotoResponse:
-        photo = await self._photos.get_active(photo_id)
-        if photo is None or photo.owner_id != owner_id:
-            raise ValueError("Photo not found")
+        photo = await self._require_owned_photo(photo_id, owner_id)
 
         logger.info(
             "describe_photo",
@@ -221,13 +230,50 @@ class PhotoService:
         await cache_setex(cache_key, 60, response.model_dump_json())
         return response
 
+    async def list_for_owner(self, owner_id: UUID) -> PhotoListResponse:
+        photos = await self._photos.list_by_owner(owner_id)
+        items: list[PhotoListItem] = []
+        for photo in photos:
+            lng, lat = await self._extract_lat_lng(photo)
+            items.append(
+                PhotoListItem(
+                    id=photo.id,
+                    lat=lat,
+                    lng=lng,
+                    thumb_key=photo.storage_key_thumb or photo.storage_key_original,
+                    ai_description=photo.ai_description,
+                    ai_status=photo.ai_status,  # type: ignore[arg-type]
+                    created_at=photo.created_at,
+                )
+            )
+        return PhotoListResponse(photos=items, count=len(items))
+
+    async def delete_photo(self, photo_id: UUID, owner_id: UUID) -> None:
+        photo = await self._require_owned_photo(photo_id, owner_id)
+
+        now = datetime.now(timezone.utc)
+        photo.deleted_at = now
+        await self._comments.soft_delete_for_photo(photo_id, now)
+
+        storage_paths = [photo.storage_key_original]
+        if photo.storage_key_medium:
+            storage_paths.append(photo.storage_key_medium)
+        if photo.storage_key_thumb:
+            storage_paths.append(photo.storage_key_thumb)
+        for path in storage_paths:
+            await delete_storage_object(path)
+
+        await invalidate_map_cache()
+        await invalidate_photo_cache(str(photo_id))
+        await invalidate_comments_cache(str(photo_id))
+
     async def _to_map_feature(self, photo: Photo) -> MapPhotoFeature:
         lng, lat = await self._extract_lat_lng(photo)
         return MapPhotoFeature(
             id=photo.id,
             lat=lat,
             lng=lng,
-            thumb_key=photo.storage_key_thumb,
+            thumb_key=photo.storage_key_thumb or photo.storage_key_original,
         )
 
     async def _to_response(self, photo: Photo) -> PhotoResponse:
